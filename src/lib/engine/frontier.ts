@@ -1,8 +1,11 @@
 import { dist, SOL } from "../geo";
 import type { Body, Reason, Role, StarSystem } from "../types";
 import {
+  BRIDGE_PENALTY,
+  bridgeHopsFor,
   CRITERIA,
   locationScore,
+  withinBridgeLimit,
   type Criterion,
   type CriterionScore,
   type PlannerSettings,
@@ -120,9 +123,7 @@ export function scoreZones(scan: ScanSystem[], settings: PlannerSettings): Zone[
     ];
 
     const npd = s.nearestPopulatedDistance;
-    let bridgeHops = 0;
-    if (npd === null) bridgeHops = -1;
-    else if (npd > settings.claimRange) bridgeHops = Math.ceil((npd - settings.claimRange) / settings.claimRange);
+    const bridgeHops = bridgeHopsFor(npd, settings.claimRange);
 
     const indReasons: Reason[] = [
       npd === null
@@ -137,8 +138,13 @@ export function scoreZones(scan: ScanSystem[], settings: PlannerSettings): Zone[
       expansion: { score: clamp(expReasons.reduce((t, x) => t + x.points, 0)), reasons: expReasons },
       capital: { score: r.Capital.score, reasons: r.Capital.reasons },
       build: {
-        score: 50,
-        reasons: [{ text: "Markets not scanned yet — analyse the zone", points: 50, certainty: "verify-in-game" }],
+        score: clamp(50 - Math.max(0, bridgeHops) * BRIDGE_PENALTY),
+        reasons: [
+          { text: "Markets not scanned yet — analyse the zone", points: 50, certainty: "verify-in-game" },
+          ...(bridgeHops > 0
+            ? [{ text: `${bridgeHops} bridge outpost(s) needed`, points: -BRIDGE_PENALTY * bridgeHops, certainty: "estimated" as const }]
+            : []),
+        ],
       },
       independence: { score: clamp(indReasons.reduce((t, x) => t + x.points, 0)), reasons: indReasons },
       diversity: {
@@ -173,6 +179,21 @@ export function scoreZones(scan: ScanSystem[], settings: PlannerSettings): Zone[
 export interface RankedZone {
   zone: Zone;
   score: number;
+}
+
+export interface ZoneFilters {
+  maxBridges: number;
+  minNeighbours: number;
+  minNearestPopulated: number;
+}
+
+export function filterZones(zones: Zone[], f: ZoneFilters): Zone[] {
+  return zones.filter(
+    (z) =>
+      withinBridgeLimit(z.bridgeHops, f.maxBridges) &&
+      z.neighbours >= f.minNeighbours &&
+      (z.nearestPopulated ?? 0) >= f.minNearestPopulated,
+  );
 }
 
 export function rankZones(zones: Zone[], w: Weights): RankedZone[] {

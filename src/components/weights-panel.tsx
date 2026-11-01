@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { CRITERIA, CRITERION_LABEL, type Criterion } from "@/lib/engine/bubbles";
 import { normalizeWeights } from "@/lib/engine/scoring";
-import { profilesOf, useSettings } from "@/store/settings";
+import { profilesOf } from "@/store/settings";
+import { useScopedSettings } from "@/store/scoped-settings";
 
 export const CRITERION_COLOR: Record<Criterion, string> = {
   expansion: "#f97316",
@@ -19,18 +19,16 @@ export const CRITERION_COLOR: Record<Criterion, string> = {
 };
 
 export function WeightsPanel() {
-  const { weights, setWeight, activeProfile, customProfiles, applyProfile, saveProfile, deleteProfile } = useSettings();
+  const { weights, setWeight, activeProfile, customProfiles, applyProfile, saveProfile, deleteProfile } = useScopedSettings();
   const pct = normalizeWeights(weights);
   const profiles = profilesOf(customProfiles);
   const [newName, setNewName] = useState("");
   const active = profiles.find((p) => p.name === activeProfile);
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>Ranking weights</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className="space-y-3">
+      <div className="text-sm font-semibold">Ranking weights</div>
+      <div className="space-y-3">
         <div className="flex gap-2">
           <select
             className="h-8 flex-1 rounded-md border bg-background px-2 text-sm"
@@ -105,7 +103,7 @@ export function WeightsPanel() {
             Save
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

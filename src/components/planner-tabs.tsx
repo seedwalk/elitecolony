@@ -4,19 +4,19 @@ import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { CertaintyTag, RoleChip, ScoreBar, StatusTag } from "@/components/bits";
+import { CertaintyTag, ScoreBar, StatusTag } from "@/components/bits";
 import { DataTable } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CRITERIA, CRITERION_LABEL, type SystemAnalysis } from "@/lib/engine/bubbles";
-import { rankCapitals, type RankedCapital } from "@/lib/engine/scoring";
+import type { SystemAnalysis } from "@/lib/engine/bubbles";
+import { rankCapitals } from "@/lib/engine/scoring";
 import { clearCache } from "@/lib/db";
 import { dist, SOL } from "@/lib/geo";
 import { ZonesTab } from "./zones-tab";
-import { ROLES, type Role, type Station } from "@/lib/types";
+import { BubblesTab } from "./bubbles-tab";
+import { ROLES, type Station } from "@/lib/types";
 import { useAnalysis } from "@/store/analysis";
 import { useSettings } from "@/store/settings";
-import { CRITERION_COLOR } from "./weights-panel";
 
 const fmt = (n: number | null | undefined, d = 1) => (n === null || n === undefined ? "—" : n.toFixed(d));
 
@@ -40,8 +40,8 @@ export function PlannerTabs() {
   }
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-3">
-      <div className="flex flex-wrap items-center gap-3">
+    <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
         <TabsList>
           <TabsTrigger value="zones">Frontier zones</TabsTrigger>
           <TabsTrigger value="bubbles">Bubbles</TabsTrigger>
@@ -59,22 +59,22 @@ export function PlannerTabs() {
         )}
         {analyseError && <span className="text-xs text-red-400">{analyseError}</span>}
       </div>
-      <TabsContent value="zones">
+      <TabsContent value="zones" className="flex min-h-0 flex-col">
         <ZonesTab onAnalysed={() => setTab("bubbles")} />
       </TabsContent>
-      <TabsContent value="bubbles">
-        {region ? <BubblesTable ranked={ranked} byId={byId} /> : <Empty text="Analyse a frontier zone (or search around a system) to build bubbles." />}
+      <TabsContent value="bubbles" className="flex min-h-0 flex-col">
+        {region ? <BubblesTab ranked={ranked} byId={byId} /> : <Empty text="Analyse a frontier zone (or search around a system) to build bubbles." />}
       </TabsContent>
-      <TabsContent value="systems">
+      <TabsContent value="systems" className="min-h-0 overflow-y-auto">
         <SystemsTable systems={result?.systems ?? []} />
       </TabsContent>
-      <TabsContent value="logistics">
+      <TabsContent value="logistics" className="min-h-0 overflow-y-auto">
         <LogisticsTable stations={stations} />
       </TabsContent>
-      <TabsContent value="missing">
+      <TabsContent value="missing" className="min-h-0 overflow-y-auto">
         <MissingTable systems={result?.systems ?? []} />
       </TabsContent>
-      <TabsContent value="data">
+      <TabsContent value="data" className="min-h-0 overflow-y-auto">
         <DataTab />
       </TabsContent>
     </Tabs>
@@ -86,94 +86,6 @@ function Empty({ text }: { text: string }) {
 }
 
 /* ---------------------------------------------------------------- */
-
-const rc = createColumnHelper<RankedCapital>();
-
-function BubblesTable({ ranked, byId }: { ranked: RankedCapital[]; byId: Map<number, SystemAnalysis> }) {
-  const router = useRouter();
-  const columns = useMemo(
-    () => [
-      rc.display({ id: "rank", header: "#", cell: (c) => c.row.index + 1, enableHiding: false }),
-      rc.accessor((r) => byId.get(r.capitalId64)?.system.name ?? String(r.capitalId64), {
-        id: "capitalName",
-        header: "Capital",
-        cell: (c) => <span className="font-medium text-orange-300">{c.getValue()}</span>,
-        enableHiding: false,
-      }),
-      rc.accessor("recommendedScore", { header: "Score", cell: (c) => <ScoreBar value={c.getValue()} /> }),
-      rc.accessor((r) => r.recommended.size, { id: "size", header: "Systems" }),
-      rc.accessor((r) => r.recommended.uncovered.length, {
-        id: "coverage",
-        header: "Roles",
-        cell: (c) => {
-          const b = c.row.original.recommended;
-          const roles = [...new Set(Object.values(b.assignment).flat())] as Role[];
-          return (
-            <span className="flex min-w-[260px] flex-wrap gap-0.5 whitespace-normal">
-              {ROLES.filter((r) => roles.includes(r)).map((r) => (
-                <RoleChip key={r} role={r} />
-              ))}
-              {b.uncovered.map((r) => (
-                <span key={r} className="rounded border border-dashed px-1 text-[10px] text-muted-foreground line-through">
-                  {r}
-                </span>
-              ))}
-            </span>
-          );
-        },
-      }),
-      ...CRITERIA.map((k) =>
-        rc.accessor((r) => r.recommended.criteria[k].score, {
-          id: k,
-          header: CRITERION_LABEL[k],
-          cell: (c) => <ScoreBar value={c.getValue()} color={CRITERION_COLOR[k]} />,
-        }),
-      ),
-      rc.accessor((r) => r.recommended.maxHop, { id: "hop", header: "Max hop (ly)", cell: (c) => fmt(c.getValue()) }),
-      rc.accessor((r) => r.recommended.radius, { id: "radius", header: "Radius (ly)", cell: (c) => fmt(c.getValue()) }),
-      rc.accessor((r) => byId.get(r.capitalId64)?.nearestMarket?.ly ?? null, {
-        id: "market",
-        header: "Market (ly)",
-        cell: (c) => fmt(c.getValue()),
-      }),
-      rc.accessor((r) => r.recommended.bridgeHops, {
-        id: "bridge",
-        header: "Bridge",
-        cell: (c) => (c.getValue() === 0 ? "direct" : c.getValue() < 0 ? "?" : `${c.getValue()} hops`),
-      }),
-      rc.accessor((r) => r.recommended.risks.length, { id: "risks", header: "Risks" }),
-      rc.accessor((r) => r.curve.map((p) => `${p.size}:${Math.round(p.score)}`).join(" "), {
-        id: "curve",
-        header: "Size → score",
-        cell: (c) => <Sparkline points={c.row.original.curve} rec={c.row.original.recommended.size} />,
-      }),
-    ],
-    [byId],
-  );
-  return (
-    <DataTable
-      data={ranked}
-      columns={columns}
-      placeholder="Filter capitals…"
-      onRowClick={(r) => router.push(`/bubble/${r.capitalId64}?size=${r.recommended.size}`)}
-    />
-  );
-}
-
-function Sparkline({ points, rec }: { points: { size: number; score: number }[]; rec: number }) {
-  if (points.length === 0) return null;
-  return (
-    <span className="inline-flex h-5 items-end gap-px" title={points.map((p) => `${p.size} sys: ${p.score}`).join("\n")}>
-      {points.map((p) => (
-        <span
-          key={p.size}
-          className={p.size === rec ? "bg-orange-400" : "bg-muted-foreground/40"}
-          style={{ width: 5, height: `${Math.max(8, p.score)}%` }}
-        />
-      ))}
-    </span>
-  );
-}
 
 /* ---------------------------------------------------------------- */
 

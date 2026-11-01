@@ -1,7 +1,6 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { CertaintyTag, RoleChip, ScoreBar, StatusTag, useHydrated } from "@/components/bits";
@@ -11,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { ROLE_COVER_THRESHOLD } from "@/lib/engine/roles";
 import { ROLES, type Body, type Role } from "@/lib/types";
+import { AnalyseAreaButton } from "@/components/analyse-area-button";
+import { BackButton } from "@/components/back-button";
 import { useAnalysis } from "@/store/analysis";
 import { useSettings } from "@/store/settings";
 
@@ -68,10 +69,11 @@ function SystemPage() {
   return (
     <div className="space-y-4">
       <div>
-        <Link href="/" className="text-xs text-muted-foreground hover:underline">
-          ← Planner
-        </Link>
-        <h1 className="text-2xl font-semibold">{a?.system.name ?? `System ${id}`}</h1>
+        <BackButton />
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold">{a?.system.name ?? `System ${id}`}</h1>
+          {a && <AnalyseAreaButton system={a.system} label="Analyse area around this system" />}
+        </div>
         {a && (
           <p className="text-sm text-muted-foreground">
             <StatusTag status={a.status} /> · {a.system.x.toFixed(2)}, {a.system.y.toFixed(2)}, {a.system.z.toFixed(2)} · nearest

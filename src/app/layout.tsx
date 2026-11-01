@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AnalysisAutoRunner } from "@/components/analysis-auto-runner";
 import { Footer } from "@/components/footer";
 import "./globals.css";
+import "./scrollbars.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-background text-foreground">
         <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
-          <div className="mx-auto flex h-12 max-w-[1600px] items-center gap-6 px-4">
+          <div className="flex h-12 w-full items-center gap-6 px-4">
             <Link href="/" className="font-semibold tracking-tight">
               <span className="text-orange-500">ED</span> BubblePlanner
             </Link>
@@ -33,7 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         <AnalysisAutoRunner />
-        <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-4">{children}</main>
+        <main className="w-full flex-1 px-4 py-3">{children}</main>
         <Footer />
       </body>
     </html>

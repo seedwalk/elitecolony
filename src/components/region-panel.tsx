@@ -3,13 +3,12 @@
 import { useState } from "react";
 import { SystemAutocomplete } from "@/components/system-autocomplete";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import type { SunPreference } from "@/lib/engine/bubbles";
 import { useAnalysis } from "@/store/analysis";
-import { useSettings } from "@/store/settings";
+import { useIsDraft, useScopedSettings } from "@/store/scoped-settings";
 
 /** Rough size estimate of a frontier scan (measured: ~36 anchor systems per ly of band at 250–350 ly). */
 function scanEstimate(min: number, max: number) {
@@ -20,19 +19,18 @@ function scanEstimate(min: number, max: number) {
 }
 
 export function RegionPanel() {
-  const { regionForm: f, setRegionForm, capitalFilterNames, setCapitalFilterNames, planner, setPlanner } = useSettings();
+  const { regionForm: f, setRegionForm, capitalFilterNames, setCapitalFilterNames, planner, setPlanner } = useScopedSettings();
   const { fetching, progress, fetchError, fetchCurrentForm, fetchAroundNames, cancelFetch, unmatchedNames, runScan } = useAnalysis();
+  const isDraft = useIsDraft();
   const [list, setList] = useState("");
   const [tab, setTab] = useState<"area" | "list">("area");
   const pct = progress && progress.total > 0 ? Math.min(100, (progress.fetched / progress.total) * 100) : 0;
   const est = scanEstimate(planner.sunMin, planner.sunMax);
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>Search area</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className="space-y-3">
+      <div className="text-sm font-semibold">Search area</div>
+      <div className="space-y-3">
         <div className="flex overflow-hidden rounded-md border text-xs">
           {(
             [
@@ -107,7 +105,7 @@ export function RegionPanel() {
                     ))}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className={isDraft ? "hidden" : "flex gap-2"}>
                   <Button size="sm" className="flex-1" disabled={fetching} onClick={() => void runScan()}>
                     {fetching ? "Working…" : "Scan frontier"}
                   </Button>
@@ -121,6 +119,7 @@ export function RegionPanel() {
                 className="space-y-3"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (isDraft) return; // applied from the Filters panel
                   setCapitalFilterNames([]);
                   void fetchCurrentForm();
                 }}
@@ -157,7 +156,7 @@ export function RegionPanel() {
                   />
                   <p className="text-[11px] text-muted-foreground">~40 ly ≈ 550 systems / 6k bodies / 4 MB.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className={isDraft ? "hidden" : "flex gap-2"}>
                   <Button size="sm" type="submit" disabled={fetching || (f.mode === "system" && !f.system)} className="flex-1">
                     {fetching ? "Fetching…" : "Search"}
                   </Button>
@@ -205,7 +204,7 @@ export function RegionPanel() {
           </div>
         )}
 
-        {fetching && progress && (
+        {!isDraft && fetching && progress && (
           <div className="space-y-1">
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <div className="h-full bg-orange-500 transition-all" style={{ width: `${pct}%` }} />
@@ -222,7 +221,7 @@ export function RegionPanel() {
         {unmatchedNames.length > 0 && (
           <p className="text-xs text-amber-400">Not found / outside region: {unmatchedNames.join(", ")}</p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

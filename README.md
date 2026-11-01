@@ -24,9 +24,9 @@ Node 20+ (developed on Node 24). No database, no API keys, no environment variab
    - **Around a system** — pick a system from the autocomplete (only real systems are accepted) and a radius.
    - **Coordinates** — same, with x/y/z.
    - **Paste systems** — one per line (e.g. copied from ED Colonise); they are analysed as capital candidates.
-2. **Frontier zones** tab — every claimable anchor system is scored as the centre of a potential bubble (estimated, from body summaries). **Analyse** one zone, or **Analyse ◆** the top N non-overlapping zones.
-3. **Bubbles** tab — for each capital candidate, the best bubble **for every size** in your range (e.g. 1–8 systems) and the size↔score curve. The recommended size is the smallest one within 3 points of that capital's best.
-4. Click a bubble → **bubble view**: 3D map (claim ranges, other colonies, L-pad markets), members side by side, suggested roles, your own role assignment, score breakdown with certainty tags, advantages, risks and missing data.
+2. **Frontier zones** tab — every claimable anchor system is scored as the centre of a potential bubble (estimated, from body summaries), shown side by side with a 3D map. Filter by **max claim bridges** (0 = directly claimable, ideal for a first colony), anchors nearby and distance to the nearest populated system. **Analyse** a zone from its row (or double-click it), or tick several (checkboxes, shift+click on the map, or *Select top N distinct*) and **Analyse selected**. Analysed zones accumulate into one bubble ranking; *clear analysed* resets it.
+3. **Bubbles** tab — 3D map + list side by side; clicking a row or point flies the camera to that bubble. For each capital candidate, the best bubble **for every size** in your range (e.g. 1–8 systems) and the size↔score curve. The recommended size is the smallest one within 3 points of that capital's best.
+4. **Open** (or double-click) a bubble → **bubble view**: 3D map (claim ranges, other colonies, L-pad markets) with member cards — click a card or a member on the map to fly to it — suggested roles, your own role assignment, score breakdown with certainty tags, advantages, risks and missing data.
 5. Click a system → **system detail**: every body with all attributes, rings and hotspots, role-fit breakdown, your notes / roles / "verified in game".
 
 ### Controls
@@ -38,7 +38,20 @@ Node 20+ (developed on Node 24). No database, no API keys, no environment variab
 | Roles the bubble must cover | Target roles. A system may cover several roles. |
 | Number of systems (range) | Bubble sizes evaluated (1 = a single system that does everything). |
 | Max hop / max radius / claim range | Bubble geometry. Claim range defaults to the game's 15 ly. |
+| Max claim bridges | Outposts you'd need to build to reach a capital (claims reach 15 ly from a populated system). 0 = only capitals you can claim directly. Each bridge also costs points in *Build & supply*. |
 | Hauling | Fleet Carrier (×5 haul range), minimum pad at markets (L/M), acceptable haul distance. |
+
+### Layout
+
+Airbnb-style: a search capsule (Where / Range / Prefer / Search) and a **⚙ Filters** button at the top — the Filters panel shows search area, weights, bubble shape and hauling at once, edited as a draft and applied with *Apply & re-analyse*. Zones and bubbles are listed as cards (left) next to a 3D map (right); each list has its own pills (Claim, Anchors, Isolation, Systems, Roles, Score, **Risks**, Sort).
+
+### Risks & competition
+
+Each bubble card lists its risks as chips (missing roles, no/far market, colony within claim range, active claim within claim range, bridges, unknown reach, long hop) and a competition line: *claim from X (d ly) · nearest other colony · colonies within claim range · within radius · being built*. The system you claim from is required for a direct claim, so it is excluded from competition and independence.
+
+### 3D map controls
+
+Drag to rotate, right-drag to pan, scroll to zoom (towards the cursor). Buttons: zoom in/out, fit all, top view, side view, fullscreen. Click selects, double-click opens/analyses. The search panel collapses automatically when a download starts (« / » to toggle).
 
 ## Architecture
 

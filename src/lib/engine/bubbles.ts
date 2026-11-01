@@ -57,6 +57,8 @@ export interface PlannerSettings {
   sunMin: number;
   sunMax: number;
   sunPreference: SunPreference;
+  /** Max bridge outposts allowed to reach a capital (0 = directly claimable only, -1 = any). */
+  maxBridges: number;
   /** If set, only these systems are considered as capitals (pasted list). */
   capitalFilter?: number[];
 }
@@ -74,7 +76,61 @@ export const DEFAULT_SETTINGS: PlannerSettings = {
   sunMin: 250,
   sunMax: 350,
   sunPreference: "outer",
+  maxBridges: 0,
 };
+
+/** True when a capital's claim chain fits the user's bridge limit (unknown reach only passes with "any"). */
+export function withinBridgeLimit(bridgeHops: number, maxBridges: number): boolean {
+  if (maxBridges < 0) return true;
+  return bridgeHops >= 0 && bridgeHops <= maxBridges;
+}
+
+/** Effective haul range (Fleet Carrier ×5). */
+export function haulRange(l: LogisticsSettings): number {
+  return l.maxHaulLy * (l.hasFleetCarrier ? 5 : 1);
+}
+
+/** How far around a system we look for (and download) construction markets. */
+export function marketSearchRange(l: LogisticsSettings): number {
+  return Math.min(150, Math.max(40, haulRange(l)));
+}
+
+/** Points lost per bridge outpost needed to reach the capital (each = 25 M cr claim + an outpost build). */
+export const BRIDGE_PENALTY = 12;
+
+export function bridgeHopsFor(originDistance: number | null, claimRange: number): number {
+  if (originDistance === null) return -1;
+  return originDistance <= claimRange ? 0 : Math.ceil((originDistance - claimRange) / claimRange);
+}
+
+export const RISK_LABEL = {
+  missing_roles: "Missing target roles",
+  no_market: "No construction market in range",
+  far_market: "Market beyond haul range",
+  colony_in_range: "Colony within claim range",
+  active_claims: "Active claim within claim range",
+  bridge: "Needs bridge outposts",
+  unknown_reach: "Claim reach unknown",
+  long_hop: "Hop longer than claim range",
+} as const;
+export type RiskCode = keyof typeof RISK_LABEL;
+
+/** Other colonies around a bubble (colonised or being colonised systems). */
+export interface Competition {
+  /** Populated/colonised system you would claim the capital from (excluded from competition). */
+  claimContactName: string | null;
+  claimContactLy: number | null;
+  /** Closest colony to any bubble member. */
+  nearestColonyLy: number | null;
+  nearestColonyName: string | null;
+  /** Colonies within claim range (15 ly) of any member — they can claim your neighbours. */
+  inClaimRange: number;
+  /** Of those, systems being colonised right now. */
+  activeInClaimRange: number;
+  /** Colonies within the bubble search radius of the capital. */
+  inRadius: number;
+  activeInRadius: number;
+}
 
 export interface MarketRef {
   stationName: string;
@@ -115,6 +171,9 @@ export interface Bubble {
   criteria: Record<Criterion, CriterionScore>;
   advantages: string[];
   risks: string[];
+  /** Machine-readable risk categories (for filtering). */
+  riskCodes: RiskCode[];
+  competition: Competition;
   missing: string[];
   bridgeHops: number;
 }
@@ -201,8 +260,10 @@ export function analyseSystems(input: RegionInput): SystemAnalysis[] {
     const facts = systemFacts(sb, sys.bodyCount);
 
     let nearestMarket: MarketRef | null = null;
+    const searchLy = marketSearchRange(settings.logistics);
     for (const m of markets) {
       const d = dist(sys, m);
+      if (d > searchLy) continue; // beyond what was downloaded: unknown, not "nearest"
       if (!nearestMarket || d < nearestMarket.ly)
         nearestMarket = {
           stationName: m.name,
@@ -214,7 +275,7 @@ export function analyseSystems(input: RegionInput): SystemAnalysis[] {
         };
     }
 
-    const haul = settings.logistics.maxHaulLy * (settings.logistics.hasFleetCarrier ? 5 : 1);
+    const haul = haulRange(settings.logistics);
     const roles = scoreRoles(sb, facts, { nearestMarketLy: nearestMarket?.ly ?? null, maxHaulLy: haul });
 
     let status = "Available";
@@ -239,6 +300,8 @@ export function analyseSystems(input: RegionInput): SystemAnalysis[] {
       const d = dist(sys, o);
       if (originDistance === null || d < originDistance) originDistance = d;
     }
+    const npd = sys.population > 0 ? 0 : sys.nearestPopulatedDistance;
+    if (npd !== null && (originDistance === null || npd < originDistance)) originDistance = npd;
 
     const missing: string[] = [];
     if (sb.length === 0) missing.push("No body data (system not scanned on Spansh)");
@@ -353,6 +416,11 @@ export function evaluateBubble(members: number[], ctx: Ctx): Bubble {
 
   const advantages: string[] = [];
   const risks: string[] = [];
+  const riskCodes: RiskCode[] = [];
+  const risk = (code: RiskCode, text: string) => {
+    risks.push(text);
+    if (!riskCodes.includes(code)) riskCodes.push(code);
+  };
   const missing = new Set<string>();
   for (const m of members) for (const x of sa[m].missing) missing.add(`${sa[m].system.name}: ${x}`);
 
@@ -374,7 +442,7 @@ export function evaluateBubble(members: number[], ctx: Ctx): Bubble {
   };
   expansion.score = clamp(expansion.reasons.reduce((s, r) => s + r.points, 0));
   if (uncovered.length === 0) advantages.push(`All ${settings.targetRoles.length} target roles covered in ${members.length} system(s)`);
-  else risks.push(`Missing roles: ${uncovered.join(", ")}`);
+  else risk("missing_roles", `Missing roles: ${uncovered.join(", ")}`);
 
   // Capital
   const capitalScore: CriterionScore = { score: capital.roles.Capital.score, reasons: capital.roles.Capital.reasons };
@@ -382,7 +450,8 @@ export function evaluateBubble(members: number[], ctx: Ctx): Bubble {
 
   // Build & supply
   const lg = settings.logistics;
-  const haul = lg.maxHaulLy * (lg.hasFleetCarrier ? 5 : 1);
+  const haul = haulRange(lg);
+  const bridgeHops = bridgeHopsFor(capital.originDistance, settings.claimRange);
   const buildReasons: Reason[] = [];
   const mk = capital.nearestMarket;
   if (mk) {
@@ -391,10 +460,14 @@ export function evaluateBubble(members: number[], ctx: Ctx): Bubble {
       points: Math.round(70 * clamp(1 - mk.ly / Math.max(1, haul), 0, 1)),
       certainty: "confirmed",
     });
-    if (mk.ly > haul) risks.push(`Nearest market ${mk.ly.toFixed(0)} ly away exceeds haul limit (${haul} ly)`);
+    if (mk.ly > haul) risk("far_market", `Nearest market ${mk.ly.toFixed(0)} ly away exceeds haul limit (${haul} ly)`);
   } else {
-    buildReasons.push({ text: "No construction market found in fetched range", points: 0, certainty: "verify-in-game" });
-    risks.push("No known construction market nearby");
+    buildReasons.push({
+      text: `No construction market within ${marketSearchRange(lg)} ly (searched)`,
+      points: 0,
+      certainty: "verify-in-game",
+    });
+    risk("no_market", "No known construction market nearby");
   }
   if (lg.hasFleetCarrier) buildReasons.push({ text: "Fleet Carrier extends haul range ×5", points: 0, certainty: "estimated" });
   buildReasons.push({
@@ -402,28 +475,93 @@ export function evaluateBubble(members: number[], ctx: Ctx): Bubble {
     points: Math.round(30 * clamp(1 - g.avgToCapital / Math.max(1, settings.maxRadius), 0, 1)),
     certainty: "confirmed",
   });
+  if (bridgeHops > 0)
+    buildReasons.push({
+      text: `${bridgeHops} bridge outpost(s) needed to reach the capital`,
+      points: -BRIDGE_PENALTY * bridgeHops,
+      certainty: "estimated",
+    });
   const build: CriterionScore = { score: clamp(buildReasons.reduce((s, r) => s + r.points, 0)), reasons: buildReasons };
 
-  // Independence
-  let nearestPop: number | null = null;
-  for (const m of members) {
-    const d = sa[m].system.nearestPopulatedDistance;
-    if (d !== null && (nearestPop === null || d < nearestPop)) nearestPop = d;
+  // Independence & competition.
+  // The populated/colonised system you claim FROM (your "claim contact") is required for a direct
+  // claim, so it is excluded from everything below: it is not competition.
+  const isInhabited = (o: SystemAnalysis) => o.system.population > 0 || o.system.isColonised || o.system.isBeingColonised;
+  const isColony = (o: SystemAnalysis) => o.system.isColonised || o.system.isBeingColonised;
+  const reach = settings.maxRadius + settings.claimRange;
+  const around = ctx.othersGrid.within(capital.system, reach).map((i) => ctx.others[i]);
+
+  let contact: SystemAnalysis | null = null;
+  let contactLy = Infinity;
+  for (const o of around) {
+    if (!(o.system.population > 0 || o.system.isColonised)) continue;
+    const d = dist(capital.system, o.system);
+    if (d < contactLy) {
+      contactLy = d;
+      contact = o;
+    }
   }
-  const neighboursOthers = ctx.othersGrid.within(capital.system, settings.maxRadius).map((i) => ctx.others[i]);
-  const colonies = neighboursOthers.filter((o) => o.system.isColonised || o.system.isBeingColonised).length;
-  const populated = neighboursOthers.filter((o) => o.system.population > 0 && !o.system.isColonised).length;
+  if (!contact || contactLy > settings.claimRange) contact = null;
+  const notContact = (o: SystemAnalysis) => o.system.id64 !== contact?.system.id64;
+
+  let nearestOtherLy: number | null = null;
+  let nearestOtherName: string | null = null;
+  let nearestColonyLy: number | null = null;
+  let nearestColonyName: string | null = null;
+  const inClaim = new Set<number>();
+  const activeInClaim = new Set<number>();
+  for (const o of around) {
+    if (!isInhabited(o) || !notContact(o)) continue;
+    for (const m of members) {
+      const d = dist(sa[m].system, o.system);
+      if (nearestOtherLy === null || d < nearestOtherLy) {
+        nearestOtherLy = d;
+        nearestOtherName = o.system.name;
+      }
+      if (isColony(o) && (nearestColonyLy === null || d < nearestColonyLy)) {
+        nearestColonyLy = d;
+        nearestColonyName = o.system.name;
+      }
+      if (isColony(o) && d <= settings.claimRange) {
+        inClaim.add(o.system.id64);
+        if (o.system.isBeingColonised) activeInClaim.add(o.system.id64);
+      }
+    }
+  }
+  const inRadiusList = around.filter((o) => isColony(o) && notContact(o) && dist(capital.system, o.system) <= settings.maxRadius);
+  const competition: Competition = {
+    claimContactName: contact?.system.name ?? null,
+    claimContactLy: contact ? contactLy : null,
+    nearestColonyLy,
+    nearestColonyName,
+    inClaimRange: inClaim.size,
+    activeInClaimRange: activeInClaim.size,
+    inRadius: inRadiusList.length,
+    activeInRadius: inRadiusList.filter((o) => o.system.isBeingColonised).length,
+  };
+
   const indReasons: Reason[] = [
-    nearestPop === null
-      ? { text: "Nearest populated distance unknown", points: 30, certainty: "verify-in-game" }
-      : { text: `Nearest populated system ${nearestPop.toFixed(1)} ly`, points: Math.round(60 * clamp(nearestPop / 40, 0, 1)), certainty: "confirmed" },
-    { text: `${colonies} other colonies (or in progress) within ${settings.maxRadius} ly`, points: Math.max(0, 25 - colonies * 5), certainty: "confirmed" },
-    { text: `${populated} bubble-populated systems within ${settings.maxRadius} ly`, points: Math.max(0, 15 - populated * 3), certainty: "confirmed" },
+    nearestOtherLy === null
+      ? { text: `No other inhabited system within ${reach} ly (besides your claim contact)`, points: 60, certainty: "confirmed" }
+      : {
+          text: `Nearest other inhabited system ${nearestOtherLy.toFixed(1)} ly (${nearestOtherName}) — claim contact excluded`,
+          points: Math.round(60 * clamp(nearestOtherLy / (settings.claimRange * 2), 0, 1)),
+          certainty: "confirmed",
+        },
+    {
+      text: `${inClaim.size} other colon${inClaim.size === 1 ? "y" : "ies"} within ${settings.claimRange} ly of the bubble`,
+      points: Math.max(0, 40 - inClaim.size * 15),
+      certainty: "confirmed",
+    },
   ];
   const independence: CriterionScore = { score: clamp(indReasons.reduce((s, r) => s + r.points, 0)), reasons: indReasons };
-  if (colonies >= 4) risks.push(`${colonies} other colonies nearby (competition / sniping)`);
-  const beingColonised = neighboursOthers.filter((o) => o.system.isBeingColonised).length;
-  if (beingColonised > 0) risks.push(`${beingColonised} system(s) being colonised nearby right now`);
+  if (inClaim.size > 0)
+    risk(
+      "colony_in_range",
+      `${inClaim.size} other colon${inClaim.size > 1 ? "ies" : "y"} within ${settings.claimRange} ly of the bubble — they can claim your neighbours (nearest ${nearestColonyLy!.toFixed(1)} ly: ${nearestColonyName})`,
+    );
+  if (activeInClaim.size > 0)
+    risk("active_claims", `${activeInClaim.size} system(s) being colonised right now within ${settings.claimRange} ly of the bubble`);
 
   // Diversity: all economy roles (not only targets)
   const econRoles: Role[] = ["Capital", "Extraction", "Refinery", "Industrial", "Agriculture", "HighTech", "Military"];
@@ -434,19 +572,18 @@ export function evaluateBubble(members: number[], ctx: Ctx): Bubble {
   };
 
   // Claim chain
-  let bridgeHops = 0;
   const od = capital.originDistance;
   if (od === null || od > settings.claimRange) {
-    bridgeHops = od === null ? -1 : Math.ceil((od - settings.claimRange) / settings.claimRange);
-    risks.push(
-      od === null
-        ? "No colonisation contact found nearby — bridge length unknown"
-        : `Capital is ${od.toFixed(1)} ly from nearest contact: needs ~${bridgeHops} bridge outpost(s)`,
-    );
+    if (od === null) risk("unknown_reach", "No colonisation contact found nearby — bridge length unknown");
+    else risk("bridge", `Capital is ${od.toFixed(1)} ly from nearest contact: needs ~${bridgeHops} bridge outpost(s)`);
   } else {
-    advantages.push(`Capital claimable directly (${od.toFixed(1)} ly from a populated system)`);
+    advantages.push(
+      contact
+        ? `Capital claimable directly from ${contact.system.name} (${contactLy.toFixed(1)} ly)`
+        : `Capital claimable directly (${od.toFixed(1)} ly from a populated system)`,
+    );
   }
-  if (g.maxHop > settings.claimRange) risks.push(`A hop of ${g.maxHop.toFixed(1)} ly exceeds the ${settings.claimRange} ly claim range`);
+  if (g.maxHop > settings.claimRange) risk("long_hop", `A hop of ${g.maxHop.toFixed(1)} ly exceeds the ${settings.claimRange} ly claim range`);
 
   return {
     capitalId64: capital.system.id64,
@@ -468,6 +605,8 @@ export function evaluateBubble(members: number[], ctx: Ctx): Bubble {
     },
     advantages,
     risks,
+    riskCodes,
+    competition,
     missing: [...missing],
     bridgeHops,
   };
@@ -525,7 +664,9 @@ export function analyseRegion(input: RegionInput): RegionResult {
   };
 
   // Pre-rank capital candidates: capital quality + best role coverage within reach.
-  let pool = claimIdx;
+  let pool = claimIdx.filter((i) =>
+    withinBridgeLimit(bridgeHopsFor(sa[i].originDistance, settings.claimRange), settings.maxBridges),
+  );
   if (settings.capitalFilter?.length) {
     const f = new Set(settings.capitalFilter);
     pool = claimIdx.filter((i) => f.has(sa[i].system.id64));

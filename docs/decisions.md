@@ -16,3 +16,11 @@
 | 12 | **TanStack Table v8** | Stable, well-known API (v9 was just released). |
 | 13 | **3D map with react-three-fiber**, lazy-loaded | User preference; loaded via `next/dynamic` with `ssr: false` so it doesn't weigh on other pages. |
 | 14 | **Everything in English** | User requirement (UI, code, docs). |
+| 15 | **Max claim bridges filter (default 0)** + bridge penalty in Build & supply | A first colony must be claimable directly from the bubble; remote zones otherwise ranked high on independence while being unreachable. |
+| 16 | **Claim reach uses Spansh `nearest_populated_distance`** as well as downloaded systems | Zones far from the bubble had no populated system in the downloaded sphere, producing absurd bridge counts. |
+| 17 | **Nearest market only within the searched range** | With several analysed zones, a market in another zone was reported as "nearest" (hundreds of ly away). |
+| 18 | **Point clouds as constant-pixel sprites** | Thousands of systems across 2,400 ly stay visible at any zoom without hiding bubble members. |
+| 19 | **Risks are categorised** (`riskCodes`) and filterable; shown as chips on every card | Users need to see and filter risks at a glance, not read free text. |
+| 20 | **Competition measured from every member, by distance** (nearest other colony, colonies within claim range, active claims within claim range) | A colony within 15 ly of any member can claim your neighbours; a colony 30 ly from the capital cannot. |
+| 21 | **The claim contact is excluded from independence and competition**; no "crowded area" risk | A first colony *must* be within 15 ly of a populated system, so penalising that proximity punished every valid option. |
+| 22 | **Filters panel edits a draft** (zustand store copy) and applies on "Apply & re-analyse" | Avoids re-running the analysis on every slider move; mirrors Airbnb's Filters UX. |

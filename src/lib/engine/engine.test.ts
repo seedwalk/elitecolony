@@ -193,6 +193,54 @@ describe("analyseRegion / bubble search", () => {
     expect(b.risks.some((r) => r.includes("bridge"))).toBe(true);
   });
 
+  it("maxBridges limits capital candidates (0 = directly claimable only)", () => {
+    const s = scenario();
+    // "far" is 200 ly from the hub but Spansh says a populated system is 20 ly away → 1 bridge
+    const strict = analyseRegion({ systems: s.systems, bodies: s.bodies, stations: s.stations, settings: { ...settings, maxBridges: 0 } });
+    expect(strict.capitals.map((c) => c.capitalId64)).not.toContain(s.far.id64);
+    const loose = analyseRegion({ systems: s.systems, bodies: s.bodies, stations: s.stations, settings: { ...settings, maxBridges: -1, maxCapitals: 50 } });
+    expect(loose.capitals.map((c) => c.capitalId64)).toContain(s.far.id64);
+  });
+
+  it("uses Spansh nearest-populated distance when no populated system was downloaded nearby", () => {
+    const s = scenario();
+    const res = analyseRegion({ systems: s.systems, bodies: s.bodies, stations: s.stations, settings: { ...settings, maxBridges: -1 } });
+    const far = res.systems.find((x) => x.system.id64 === s.far.id64)!;
+    expect(far.originDistance).toBe(20); // not ~200 ly to the downloaded hub
+  });
+
+  it("ignores markets beyond the searched range instead of calling them nearest", () => {
+    const s = scenario();
+    const res = analyseRegion({ systems: s.systems, bodies: s.bodies, stations: s.stations, settings: { ...settings, maxBridges: -1 } });
+    const far = res.systems.find((x) => x.system.id64 === s.far.id64)!;
+    expect(far.nearestMarket).toBeNull(); // the only market is 200 ly away
+    const cap = res.systems.find((x) => x.system.id64 === s.capital.id64)!;
+    expect(cap.nearestMarket?.ly).toBeCloseTo(12);
+  });
+
+  it("tags risks with machine-readable codes", () => {
+    const s = scenario();
+    const res = analyseRegion({ systems: s.systems, bodies: s.bodies, stations: s.stations, settings: { ...settings, maxBridges: -1 } });
+    const all = res.capitals.flatMap((c) => c.bubbles);
+    for (const b of all) expect(b.riskCodes.length).toBeLessThanOrEqual(b.risks.length);
+    const far = res.capitals.find((c) => c.capitalId64 === s.far.id64)!.bubbles[0];
+    expect(far.riskCodes).toContain("bridge");
+    expect(far.riskCodes).toContain("no_market");
+  });
+
+  it("reports the nearest other colony and colonies within claim range", () => {
+    const s = scenario();
+    const colony = sys("Rival Colony", 22, 0, 8, { isColonised: true, population: 5000 });
+    const res = analyseRegion({ systems: [...s.systems, colony], bodies: s.bodies, stations: s.stations, settings: { ...settings, maxBridges: -1 } });
+    const b = res.capitals.find((c) => c.capitalId64 === s.capital.id64)!.bubbles.find((x) => x.members.includes(s.miner.id64))!;
+    // the populated hub 12 ly away is what you claim from: not counted as competition
+    expect(b.competition.claimContactName).toBe("Populated Hub");
+    expect(b.competition.nearestColonyName).toBe("Rival Colony");
+    expect(b.competition.nearestColonyLy).toBeCloseTo(8); // miner (22,0,0) → colony (22,0,8)
+    expect(b.competition.inClaimRange).toBe(1);
+    expect(b.riskCodes).toContain("colony_in_range");
+  });
+
   it("ranking is deterministic and weights change the order coherently", () => {
     const s = scenario();
     const res = analyseRegion({ systems: s.systems, bodies: s.bodies, stations: s.stations, settings });
