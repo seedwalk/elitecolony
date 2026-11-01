@@ -1,0 +1,46 @@
+# Response headers captured 2026-11-01 (Origin: https://example.vercel.app)
+## edsm_sphere
+HTTP/2 200 
+date: Sun, 01 Nov 2026 21:22:47 GMT
+content-type: application/json
+server: cloudflare
+cache-control: max-age=86400
+access-control-allow-origin: *
+access-control-allow-methods: GET, POST
+access-control-allow-headers: Content-Type
+x-powered-by: EDSM.NET APIv1
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+cf-cache-status: DYNAMIC
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=FMSXWVh6MDgUPrmAajAuo0%2FSEp6PHUnCOXNBshGkUwDQqMdRwd2j69kp2JTiD66gaKgzj%2ByxtL72b8ONiq8l5Q%2BYFZcsjmqzLVQKBgCKyYqvKmb73kJVsWSmpSjjk7E%3D"}]}
+cf-ray: a53df4ef1ca1dd2e-EZE
+alt-svc: h3=":443"; ma=86400
+
+## sp_q
+HTTP/2 200 
+server: nginx/1.31.0
+date: Sun, 01 Nov 2026 21:22:49 GMT
+content-type: application/json;charset=UTF-8
+content-length: 802123
+vary: Origin, Accept-Encoding
+strict-transport-security: max-age=15768000
+x-frame-options: SAMEORIGIN
+
+## sp_sys
+HTTP/2 200 
+server: nginx/1.31.0
+date: Sun, 01 Nov 2026 21:22:59 GMT
+content-type: application/json;charset=UTF-8
+content-length: 65552
+vary: Origin, Accept-Encoding
+strict-transport-security: max-age=15768000
+x-frame-options: SAMEORIGIN
+
+## edcolonise.net
+HTTP/2 302 
+location: /Captcha?ReturnUrl=%2F
+server: Microsoft-IIS/10.0
+strict-transport-security: max-age=2592000
+x-powered-by: ASP.NET
+date: Sun, 01 Nov 2026 21:25:52 GMT
+
